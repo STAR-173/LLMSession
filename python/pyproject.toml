@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llm_session"
-version = "0.1.0"
+version = "0.1.1"
 description = "A zero-configuration tool to automate web-based LLM interactions."
 readme = "README.md"
 authors = [{ name = "LLM_Session", email = "shoaib.star.a@gmail.com" }]

@@ -11,8 +11,7 @@
         "declaration": true
     },
     "include": [
-        "src/**/*",
-        "verify_flow.ts"
+        "src/**/*"
     ],
     "exclude": [
         "node_modules"
