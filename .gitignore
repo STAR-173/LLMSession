@@ -1,0 +1,56 @@
+# --- General ---
+.DS_Store
+.vscode/
+.idea/
+*.log
+*.png
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.env
+venv/
+env/
+ENV/
+.venv/
+
+# --- Node.js ---
+node_modules/
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+.pnp
+.pnp.js
+dist/
+coverage/
+.nyc_output/
+
+# --- Playwright ---
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# --- OS Generated ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini

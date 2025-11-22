@@ -1,0 +1,33 @@
+{
+  "name": "llm-session",
+  "version": "1.0.0",
+  "description": "A zero-configuration tool to automate web-based LLM interactions.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "ts-node verify_flow.ts"
+  },
+  "keywords": [
+    "llm",
+    "automation",
+    "playwright",
+    "chatgpt"
+  ],
+  "author": "LLM_Session",
+  "license": "MIT",
+  "dependencies": {
+    "fs-extra": "^11.1.1"
+  },
+  "peerDependencies": {
+    "playwright": "^1.40.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.40.0",
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "@types/fs-extra": "^11.0.0",
+    "ts-node": "^10.9.1"
+  }
+}
