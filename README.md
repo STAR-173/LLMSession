@@ -1,6 +1,8 @@
 # LLMSession
 
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![PyPI version](https://badge.fury.io/py/llm-session.svg)](https://pypi.org/project/llm-session/)
+[![npm version](https://badge.fury.io/js/llm-session.svg)](https://www.npmjs.com/package/llm-session)
 
 A zero-configuration tool to automate interactions with web-based LLM providers (currently ChatGPT). It handles authentication, session persistence, and chained prompt execution programmatically.
 
