@@ -48,7 +48,7 @@ def my_otp_handler():
 # 3. Initialize
 bot = Automator(
     provider="chatgpt",
-    headless=False,  # Set to True for production
+    headless=False,  # Set to True for production (CURRENTLY ONLY WORKS WITH headless=False)
     credentials={
         "email": "your_email@example.com", 
         "password": "your_password",

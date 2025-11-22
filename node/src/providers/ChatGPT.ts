@@ -7,25 +7,30 @@ export class ChatGPTProvider {
     private logger: LoggerInterface;
     private onOtpRequired?: () => Promise<string>;
 
-    public static readonly URL = "https://chatgpt.com/?temporary-chat=true";
-    public static readonly LOGIN_URL = "https://auth.openai.com/log-in";
+    public static readonly URL = "https://chatgpt.com/";
+    // LOGIN_URL removed in favor of navigating to root
 
     // Default Selectors
     private static readonly DEFAULT_SELECTORS = {
-        email_input: 'input[name="email"]',
-        continue_email: 'button[value="email"]',
-        password_input: 'input[name="current-password"]',
-        continue_password: 'button[value="validate"]',
+        // New Login Flow
+        landing_login_btn: '[data-testid="login-button"]',
+        login_google_btn: 'button:has-text("Continue with Google")',
+        email_input: '#email',
+        email_continue_btn: 'button[type="submit"]',
+
+        password_input: 'input[name="password"]',
+        password_continue_btn: 'button[type="submit"]',
+
+        // Post Login
         profile_btn: '[data-testid="accounts-profile-button"]',
         textarea: '#prompt-textarea',
         send_btn: 'button[data-testid="send-button"]',
         stop_btn: 'button[data-testid="stop-button"]',
-        copy_btn: 'div[data-message-author-role="assistant"] button[data-testid="copy-turn-action-button"]',
+        assistant_msg: 'div[data-message-author-role="assistant"]',
         upsell_maybe_later: 'button:has-text("Maybe later")',
         temp_chat_continue: 'button:has-text("Continue")',
-        assistant_msg: 'div[data-message-author-role="assistant"]',
         otp_input: 'input[name="code"]',
-        otp_validate: 'button[value="validate"]'
+        otp_validate: 'button[type="submit"]'
     };
 
     // Instance getters for compatibility with Automator
@@ -41,14 +46,27 @@ export class ChatGPTProvider {
 
     public async login(credentials: { email?: string, password?: string, method?: string }): Promise<boolean> {
         this.logger.info("Starting login process...");
-        await this.page.goto(ChatGPTProvider.LOGIN_URL);
 
-        // Check if already logged in
+        // 1. Go to main page
+        await this.page.goto(ChatGPTProvider.URL);
+
+        // 2. Handle Upsells immediately
+        await this.handleDialogs();
+
+        // 3. Check if already logged in
         try {
             await this.page.waitForSelector(this.selectors.profile_btn, { timeout: 3000 });
             this.logger.info("Already logged in.");
             return true;
         } catch { }
+
+        // 4. Click Landing Login Button
+        try {
+            this.logger.info("Clicking 'Log in' from landing page...");
+            await this.page.click(this.selectors.landing_login_btn);
+        } catch (e) {
+            throw new Error(`Could not find Login button on landing page: ${e}`);
+        }
 
         const { email, password, method } = credentials;
         if (!email || !password) throw new Error("Email and password required");
@@ -56,13 +74,9 @@ export class ChatGPTProvider {
         try {
             if (method === "google") {
                 this.logger.info("Logging in via Google...");
-                // Click "Continue with Google"
-                const googleBtn = await this.page.$('button[data-provider="google"]') || await this.page.$('button:has-text("Google")');
-                if (googleBtn) {
-                    await googleBtn.click();
-                } else {
-                    await this.page.click('button:has-text("Continue with Google")');
-                }
+                // Wait for modal/button
+                await this.page.waitForSelector(this.selectors.login_google_btn);
+                await this.page.click(this.selectors.login_google_btn);
 
                 // Google Email
                 this.logger.info("Entering Google email...");
@@ -77,14 +91,17 @@ export class ChatGPTProvider {
                 await this.page.click('#passwordNext >> button');
 
             } else {
+                // Email Step
                 this.logger.info("Entering email...");
+                await this.page.waitForSelector(this.selectors.email_input);
                 await this.page.fill(this.selectors.email_input, email);
-                await this.page.click(this.selectors.continue_email);
+                await this.page.click(this.selectors.email_continue_btn);
 
+                // Password Step
                 this.logger.info("Entering password...");
                 await this.page.waitForSelector(this.selectors.password_input);
                 await this.page.fill(this.selectors.password_input, password);
-                await this.page.click(this.selectors.continue_password);
+                await this.page.click(this.selectors.password_continue_btn);
             }
 
             this.logger.info("Waiting for authentication or OTP...");
@@ -130,12 +147,14 @@ export class ChatGPTProvider {
         try {
             if (await this.page.isVisible(this.selectors.upsell_maybe_later)) {
                 await this.page.click(this.selectors.upsell_maybe_later);
+                await this.page.waitForTimeout(500);
             }
         } catch { }
 
         try {
             if (await this.page.isVisible('h2:has-text("Temporary Chat")')) {
                 await this.page.click(this.selectors.temp_chat_continue);
+                await this.page.waitForTimeout(500);
             }
         } catch { }
     }

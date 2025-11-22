@@ -52,8 +52,6 @@ class BrowserManager:
             self.context = self.playwright.chromium.launch_persistent_context(
                 user_data_dir=str(self.user_data_dir),
                 headless=headless,
-                user_agent=user_agent,
-                viewport={"width": 1280, "height": 720},
                 args=[
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",

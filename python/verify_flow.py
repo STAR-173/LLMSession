@@ -21,7 +21,7 @@ def main():
             headless=False,
             provider="chatgpt", 
             credentials={
-                "email": "test@example.com", 
+                "email": "email@example.com", 
                 "password": "password",
                 "method": "google"
             }

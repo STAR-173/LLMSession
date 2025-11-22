@@ -10,26 +10,35 @@ logger = logging.getLogger(__name__)
 class ChatGPTProvider(LLMProvider):
     """ChatGPT implementation."""
 
-    URL = "https://chatgpt.com/?temporary-chat=true"
-    LOGIN_URL = "https://auth.openai.com/log-in"
+    URL = "https://chatgpt.com/"  # Changed to root URL
+    # LOGIN_URL is no longer used directly, we navigate to URL then click login
 
     # Default Selectors
     DEFAULT_SELECTORS = {
-        "login_btn_google": 'button[value="google"]',
-        "email_input": 'input[name="email"]',
-        "continue_email": 'button[value="email"]',
-        "password_input": 'input[name="current-password"]',
-        "continue_password": 'button[value="validate"]',
+        # New Login Flow Selectors
+        "landing_login_btn": '[data-testid="login-button"]',
+        "login_google_btn": 'button:has-text("Continue with Google")',
+        "email_input": '#email', # ID is robust
+        "email_continue_btn": 'button[type="submit"]', # The email "Continue" is type="submit", Google is type="button"
+        
+        # Password Step (Likely remains similar, but using generic fallback if needed)
+        "password_input": 'input[name="password"]', # Sometimes 'current-password' or just 'password'
+        "password_continue_btn": 'button[type="submit"]', # Usually same submit button logic
+        
+        # Post-Login
         "profile_btn": '[data-testid="accounts-profile-button"]',
         "textarea": '#prompt-textarea',
         "send_btn": 'button[data-testid="send-button"]',
         "stop_btn": 'button[data-testid="stop-button"]',
-        "copy_btn": 'div[data-message-author-role="assistant"] button[data-testid="copy-turn-action-button"]',
+        "assistant_msg": 'div[data-message-author-role="assistant"]',
+        
+        # Dialogs
         "upsell_maybe_later": 'button:has-text("Maybe later")',
         "temp_chat_continue": 'button:has-text("Continue")',
-        "assistant_msg": 'div[data-message-author-role="assistant"]',
+        
+        # OTP
         "otp_input": 'input[name="code"]',
-        "otp_validate": 'button[value="validate"]'
+        "otp_validate": 'button[type="submit"]' # Usually submit button
     }
 
     def __init__(self, page: Page, config: Optional[dict] = None, on_otp_required: Optional[Callable[[], str]] = None):
@@ -50,15 +59,26 @@ class ChatGPTProvider(LLMProvider):
 
     def login(self, credentials: dict) -> bool:
         logger.info("Starting login process...")
-        self.page.goto(self.LOGIN_URL)
+        # 1. Go to main page
+        self.page.goto(self.URL)
         
-        # Check if we are already logged in
+        # 2. Handle Upsells/Dialogs immediately upon landing (as requested)
+        self.handle_dialogs()
+        
+        # 3. Check if already logged in (Profile button exists)
         try:
             self.page.wait_for_selector(self.selectors["profile_btn"], timeout=3000)
             logger.info("Already logged in.")
             return True
         except:
             pass
+
+        # 4. Click the Landing Page "Log in" button
+        try:
+            logger.info("Clicking 'Log in' from landing page...")
+            self.page.click(self.selectors["landing_login_btn"])
+        except Exception as e:
+            raise SelectorError(f"Could not find Login button on landing page: {e}")
 
         email = credentials.get("email")
         password = credentials.get("password")
@@ -70,7 +90,9 @@ class ChatGPTProvider(LLMProvider):
         try:
             if method == "google":
                 logger.info("Logging in via Google...")
-                self.page.click(self.selectors["login_btn_google"])
+                # Wait for the modal/redirect to load the Google button
+                self.page.wait_for_selector(self.selectors["login_google_btn"])
+                self.page.click(self.selectors["login_google_btn"])
                 
                 # Google Email
                 logger.info("Entering Google email...")
@@ -87,27 +109,24 @@ class ChatGPTProvider(LLMProvider):
             else:
                 # Email Step
                 logger.info("Entering email...")
+                self.page.wait_for_selector(self.selectors["email_input"])
                 self.page.fill(self.selectors["email_input"], email)
-                self.page.click(self.selectors["continue_email"])
+                
+                # Click Continue (using type="submit" to differentiate from Google button)
+                self.page.click(self.selectors["email_continue_btn"])
                 
                 # Password Step
                 logger.info("Entering password...")
                 # Wait for password field to appear (animation)
                 self.page.wait_for_selector(self.selectors["password_input"])
                 self.page.fill(self.selectors["password_input"], password)
-                self.page.click(self.selectors["continue_password"])
+                self.page.click(self.selectors["password_continue_btn"])
             
             # Wait for login to complete OR OTP check
             logger.info("Waiting for authentication or OTP...")
             
-            # Race condition: Profile (Success) vs OTP (Challenge)
-            # We can use a loop with short timeouts or Promise.race equivalent logic (try/except)
-            
             try:
-                # Wait for either profile or OTP input
-                # We'll try to wait for profile first, but with a short timeout in a loop?
-                # Or better: wait for a function that checks both.
-                
+                # Loop to check for success or OTP
                 for _ in range(30): # 30 seconds max
                     if self.page.is_visible(self.selectors["profile_btn"]):
                         logger.info("Login successful.")
@@ -147,17 +166,17 @@ class ChatGPTProvider(LLMProvider):
             if self.page.is_visible(self.selectors["upsell_maybe_later"]):
                 logger.debug("Dismissing 'Try Go' upsell...")
                 self.page.click(self.selectors["upsell_maybe_later"])
-                time.sleep(1)
+                # Wait briefly for animation
+                self.page.wait_for_timeout(500)
         except:
             pass
             
         # Temporary Chat
         try:
-            # We look for the header first to be sure, or just try clicking continue
             if self.page.is_visible('h2:has-text("Temporary Chat")'):
                 logger.debug("Dismissing 'Temporary Chat' dialog...")
                 self.page.click(self.selectors["temp_chat_continue"])
-                time.sleep(1)
+                self.page.wait_for_timeout(500)
         except:
             pass
 
@@ -174,7 +193,7 @@ class ChatGPTProvider(LLMProvider):
             self.page.wait_for_selector(self.selectors["send_btn"])
             # Ensure it's enabled
             if self.page.is_disabled(self.selectors["send_btn"]):
-                time.sleep(0.5)
+                self.page.wait_for_timeout(500)
             
             self.page.click(self.selectors["send_btn"])
             
@@ -189,9 +208,6 @@ class ChatGPTProvider(LLMProvider):
             # Wait for Stop button to disappear (generation finished)
             self.page.wait_for_selector(self.selectors["stop_btn"], state="hidden", timeout=120000) # 2 min timeout
         except PlaywrightTimeoutError:
-            # Maybe it was too fast and we missed the stop button? 
-            # Or it never started?
-            # Check if Send button is visible.
             if self.page.is_visible(self.selectors["send_btn"]):
                 pass # It's done
             else:
@@ -213,7 +229,6 @@ class ChatGPTProvider(LLMProvider):
             if markdown_div:
                 return markdown_div.inner_text()
             else:
-                # Fallback: just get all text from the message container
                 return last_msg.inner_text()
             
         except Exception as e:

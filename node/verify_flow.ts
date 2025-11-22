@@ -36,7 +36,7 @@ async function main() {
         console.log("\n[Test 2] Chained Prompt");
         const chain = [
             "Generate a random fruit name.",
-            "What is the color of {{}}?"
+            "What is the color of {}?"
         ];
         const responses = await bot.processChain(chain);
         console.log(`Chain Responses: ${JSON.stringify(responses)}`);
