@@ -1,4 +1,5 @@
 import time
+import os
 import logging
 from typing import Optional, Callable
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
@@ -10,7 +11,7 @@ logger = logging.getLogger(__name__)
 class ChatGPTProvider(LLMProvider):
     """ChatGPT implementation."""
 
-    URL = "https://chatgpt.com/"  # Changed to root URL
+    URL = "https://chatgpt.com/?temporary-chat=true"  # Changed to root URL
     # LOGIN_URL is no longer used directly, we navigate to URL then click login
 
     # Default Selectors
@@ -59,35 +60,36 @@ class ChatGPTProvider(LLMProvider):
 
     def login(self, credentials: dict) -> bool:
         logger.info("Starting login process...")
-        # 1. Go to main page
-        self.page.goto(self.URL)
         
-        # 2. Handle Upsells/Dialogs immediately upon landing (as requested)
-        self.handle_dialogs()
-        
-        # 3. Check if already logged in (Profile button exists)
         try:
-            self.page.wait_for_selector(self.selectors["profile_btn"], timeout=3000)
-            logger.info("Already logged in.")
-            return True
-        except:
-            pass
+            # 1. Go to main page
+            self.page.goto(self.URL)
+            
+            # 2. Handle Upsells/Dialogs immediately upon landing (as requested)
+            self.handle_dialogs()
+            
+            # 3. Check if already logged in (Profile button exists)
+            try:
+                self.page.wait_for_selector(self.selectors["profile_btn"], timeout=3000)
+                logger.info("Already logged in.")
+                return True
+            except:
+                pass
 
-        # 4. Click the Landing Page "Log in" button
-        try:
-            logger.info("Clicking 'Log in' from landing page...")
-            self.page.click(self.selectors["landing_login_btn"])
-        except Exception as e:
-            raise SelectorError(f"Could not find Login button on landing page: {e}")
+            # 4. Click the Landing Page "Log in" button
+            try:
+                logger.info("Clicking 'Log in' from landing page...")
+                self.page.click(self.selectors["landing_login_btn"])
+            except Exception as e:
+                raise SelectorError(f"Could not find Login button on landing page: {e}")
 
-        email = credentials.get("email")
-        password = credentials.get("password")
-        method = credentials.get("method", "email") # Default to email
-        
-        if not email or not password:
-            raise AuthenticationError("Email and password are required.")
+            email = credentials.get("email")
+            password = credentials.get("password")
+            method = credentials.get("method", "email") # Default to email
+            
+            if not email or not password:
+                raise AuthenticationError("Email and password are required.")
 
-        try:
             if method == "google":
                 logger.info("Logging in via Google...")
                 # Wait for the modal/redirect to load the Google button
@@ -125,50 +127,63 @@ class ChatGPTProvider(LLMProvider):
             # Wait for login to complete OR OTP check
             logger.info("Waiting for authentication or OTP...")
             
-            try:
-                # Loop to check for success or OTP
-                for _ in range(30): # 30 seconds max
-                    if self.page.is_visible(self.selectors["profile_btn"]):
-                        logger.info("Login successful.")
-                        return True
-                    
-                    if self.page.is_visible(self.selectors["otp_input"]):
-                        logger.warning("OTP verification required.")
-                        
-                        if not self.on_otp_required:
-                            raise OTPRequiredError("OTP required but no on_otp_required callback provided.")
-                        
-                        otp_code = self.on_otp_required()
-                        
-                        self.page.fill(self.selectors["otp_input"], otp_code)
-                        self.page.click(self.selectors["otp_validate"])
-                        logger.info("OTP submitted. Waiting for authentication...")
-                        self.page.wait_for_selector(self.selectors["profile_btn"], timeout=30000)
-                        logger.info("Login successful.")
-                        return True
-                    
-                    time.sleep(1)
+            # Loop to check for success or OTP
+            for _ in range(30): # 30 seconds max
+                if self.page.is_visible(self.selectors["profile_btn"]):
+                    logger.info("Login successful.")
+                    return True
                 
-                raise TimeoutError("Login timed out.")
+                if self.page.is_visible(self.selectors["otp_input"]):
+                    logger.warning("OTP verification required.")
+                    
+                    if not self.on_otp_required:
+                        raise OTPRequiredError("OTP required but no on_otp_required callback provided.")
+                    
+                    otp_code = self.on_otp_required()
+                    
+                    self.page.fill(self.selectors["otp_input"], otp_code)
+                    self.page.click(self.selectors["otp_validate"])
+                    logger.info("OTP submitted. Waiting for authentication...")
+                    self.page.wait_for_selector(self.selectors["profile_btn"], timeout=30000)
+                    logger.info("Login successful.")
+                    return True
                 
-            except Exception as e:
-                raise e
+                time.sleep(1)
+            
+            raise TimeoutError("Login timed out.")
                 
         except Exception as e:
-            logger.error(f"Login/OTP failed: {e}")
-            self.page.screenshot(path="login_failure.png")
-            raise AuthenticationError(f"Login failed: {e}")
+            # Save screenshot to output directory if it exists (for Docker), otherwise current dir
+            screenshot_path = "/app/output/login_failure.png" if os.path.exists("/app/output") else "login_failure.png"
+            logger.error(f"Login failed: {e}")
+            logger.info(f"Taking screenshot: {screenshot_path}")
+            self.page.screenshot(path=screenshot_path)
+            logger.info(f"Screenshot saved to: {screenshot_path}")
+            
+            # Re-raise as AuthenticationError if not already
+            if isinstance(e, (AuthenticationError, SelectorError, OTPRequiredError)):
+                raise
+            else:
+                raise AuthenticationError(f"Login failed: {e}")
 
     def handle_dialogs(self):
         """Dismiss known dialogs."""
-        # Try Go Upsell
+        # Try Go Upsell Modal - Wait for it and dismiss it!
         try:
-            if self.page.is_visible(self.selectors["upsell_maybe_later"]):
-                logger.debug("Dismissing 'Try Go' upsell...")
-                self.page.click(self.selectors["upsell_maybe_later"])
-                # Wait briefly for animation
-                self.page.wait_for_timeout(500)
-        except:
+            logger.debug("Checking for 'Try Go' upsell modal...")
+            # Wait up to 5 seconds for the modal to appear
+            self.page.wait_for_selector('[data-testid="modal-no-auth-free-trial-upsell"]', timeout=5000, state="visible")
+            logger.info("Upsell modal detected, dismissing...")
+            
+            # Click "Maybe later" button
+            self.page.click(self.selectors["upsell_maybe_later"])
+            
+            # Wait for modal to close
+            self.page.wait_for_selector('[data-testid="modal-no-auth-free-trial-upsell"]', timeout=5000, state="hidden")
+            logger.debug("Upsell modal dismissed successfully")
+            self.page.wait_for_timeout(500)
+        except Exception as e:
+            logger.debug(f"No upsell modal found or already dismissed: {e}")
             pass
             
         # Temporary Chat
